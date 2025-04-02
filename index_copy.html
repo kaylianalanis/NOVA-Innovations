@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOVA CanScanner</title>
+
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            text-align: center;
+            background-color: #eef2f3;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0px 6px 12px rgba(0, 0, 0, 0.15);
+            max-width: 500px;
+            margin: auto;
+            transition: 0.3s;
+        }
+
+        h1 {
+            color: #2c3e50;
+            font-weight: 700;
+            font-size: 24px;
+        }
+
+        #image-container {
+            position: relative;
+            display: inline-block;
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #uploadedImage, #heatmap {
+            max-width: 100%;
+            display: none;
+            border-radius: 10px;
+        }
+
+        #heatmap {
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0.5;
+        }
+
+        #label-container {
+            font-size: 18px;
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        .normal {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .cancerous {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .loading {
+            display: none;
+            margin-top: 15px;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: 0.3s;
+        }
+
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        button:hover:enabled {
+            background: #2980b9;
+        }
+
+        footer {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>NOVA CanScanner</h1>
+        <p>Advanced AI-driven cancer detection for medical scans.</p>
+        
+        <input type="file" id="imageUpload" accept="image/*">
+        <button id="proceedButton" disabled>Proceed</button> <!-- Updated Button -->
+
+        <div id="image-container">
+            <img id="uploadedImage">
+            <canvas id="heatmap"></canvas> <!-- Heatmap overlay -->
+        </div>
+        
+        <div id="label-container"></div>
+        
+        <div class="loading">
+            <img src="https://i.gifer.com/YCZH.gif" width="50">
+            <p>Analyzing image...</p>
+        </div>
+    </div>
+
+    <footer>
+        <p>Powered by NOVA Innovations Technology | Innovating Health, Inspiring Life</p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    
+    <script type="text/javascript">
+        const modelURLPath = "./my_model/";  // Path to model folder
+
+        let model, labelContainer, maxPredictions, uploadedImg;
+
+        async function init() {
+            labelContainer = document.getElementById("label-container");  // Initialize labelContainer
+
+            const modelURL = modelURLPath + "model.json"; // model.json file in model folder
+            const metadataURL = modelURLPath + "metadata.json"; // metadata.json file in model folder
+
+            try {
+                model = await tmImage.load(modelURL, metadataURL);
+                console.log("Model loaded successfully!");
+            } catch (error) {
+                console.error("Error loading model:", error);
+            }
+        }
+
+        init();  // Load the model when the page loads
+
+        document.getElementById("imageUpload").addEventListener("change", handleImageUpload);
+        document.getElementById("proceedButton").addEventListener("click", analyzeImage);
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];  // Get the uploaded file
+            if (!file) return;
+
+            // Check the file type
+            const fileType = file.type;
+            if (!fileType.startsWith('image/')) {
+                alert('Please upload a valid image file.');
+                return;
+            }
+
+            // Create image URL and display image
+            const img = document.getElementById("uploadedImage");
+            img.src = window.URL.createObjectURL(file);  // Set the src to the uploaded file URL
+            img.style.display = "block";  // Show the image element
+            uploadedImg = img;  // Store the reference to the image
+
+            console.log("Image uploaded:", img.src);  // Debug log to check the image URL
+
+            // Enable Proceed button once image is uploaded
+            document.getElementById("proceedButton").disabled = false;
+        }
+
+        async function analyzeImage() {
+            if (!uploadedImg) return;
+
+            // Show loading indicator
+            document.querySelector(".loading").style.display = "block";
+            labelContainer.innerHTML = "";
+            document.getElementById("proceedButton").disabled = true;
+
+            const prediction = await model.predict(uploadedImg);
+            displayPrediction(prediction);
+            generateHeatmap(uploadedImg);
+
+            // Hide loading
+            document.querySelector(".loading").style.display = "none";
+            document.getElementById("proceedButton").disabled = false;
+        }
+
+        function displayPrediction(prediction) {
+            labelContainer.innerHTML = ""; // Clear previous results
+            let isCancerous = false;
+            let resultText = "";
+
+            prediction.forEach(pred => {
+                const percentage = (pred.probability * 100).toFixed(2);
+                if (pred.className.toLowerCase().includes("cancerous")) {
+                    isCancerous = true;
+                    resultText = `⚠️ Cancerous Area Detected: ${percentage}% Confidence`;
+                } else {
+                    resultText = `✅ Normal Scan: ${percentage}% Confidence`;
+                }
+            });
+
+            labelContainer.className = isCancerous ? "cancerous" : "normal";
+            labelContainer.innerHTML = resultText;
+        }
+
+        function generateHeatmap(img) {
+            const canvas = document.getElementById("heatmap");
+            const ctx = canvas.getContext("2d");
+
+            canvas.width = img.width;
+            canvas.height = img.height;
+            canvas.style.display = "block";
+
+            // Simulated heatmap effect for cancerous detection
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "rgba(255, 0, 0, 0.4)";
+            ctx.fillRect(canvas.width * 0.3, canvas.height * 0.3, canvas.width * 0.4, canvas.height * 0.4);
+        }
+
+    </script>
+
+</body>
+</html>
